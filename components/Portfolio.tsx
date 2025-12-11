@@ -1,14 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PORTFOLIO_ITEMS } from '../constants';
 import { PortfolioCategory, PortfolioItem } from '../types';
-import { ShoppingCart, Check, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { ShoppingCart, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 
 const Portfolio: React.FC = () => {
   const [filter, setFilter] = useState<PortfolioCategory>('all');
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [showLeftArrow, setShowLeftArrow] = useState(false);
-  const [showRightArrow, setShowRightArrow] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [isPaused, setIsPaused] = useState(false);
 
   const filteredItems = filter === 'all' 
     ? PORTFOLIO_ITEMS 
@@ -21,50 +20,71 @@ const Portfolio: React.FC = () => {
     { id: '3d', label: 'Impresión 3D' },
   ];
 
-  const checkScroll = () => {
-    if (scrollContainerRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
-      setShowLeftArrow(scrollLeft > 20); // Tolerance
-      setShowRightArrow(Math.ceil(scrollLeft + clientWidth) < scrollWidth - 20);
-    }
-  };
+  // Create enough duplicates to allow smooth infinite scrolling
+  // We need enough width to scroll significantly before resetting
+  const displayItems = filteredItems.length > 0 
+    ? [...filteredItems, ...filteredItems, ...filteredItems, ...filteredItems, ...filteredItems] 
+    : [];
 
+  // Infinite Scroll Logic
   useEffect(() => {
-    checkScroll();
-    window.addEventListener('resize', checkScroll);
-    return () => window.removeEventListener('resize', checkScroll);
-  }, [filter, filteredItems]);
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer || filteredItems.length === 0) return;
 
-  const scroll = (direction: 'left' | 'right') => {
-    if (scrollContainerRef.current) {
-      const scrollAmount = direction === 'left' ? -420 : 420;
-      scrollContainerRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-    }
+    let animationFrameId: number;
+    const speed = 0.5; // Pixels per frame
+
+    const scroll = () => {
+      if (!isPaused && scrollContainer) {
+        scrollContainer.scrollLeft += speed;
+
+        // Reset logic: When we've scrolled past the first set of items (approx), jump back
+        // We calculate the width of one single set of items to know when to loop
+        const singleSetWidth = scrollContainer.scrollWidth / 5; 
+        
+        if (scrollContainer.scrollLeft >= singleSetWidth * 2) {
+           // Jump back seamlessly to the first set
+           scrollContainer.scrollLeft -= singleSetWidth;
+        }
+      }
+      animationFrameId = requestAnimationFrame(scroll);
+    };
+
+    animationFrameId = requestAnimationFrame(scroll);
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [isPaused, filteredItems.length]);
+
+  const scrollManual = (direction: 'left' | 'right') => {
+    if (!scrollRef.current) return;
+    const scrollAmount = 350; // Approx one card width + gap
+    
+    scrollRef.current.scrollBy({
+      left: direction === 'right' ? scrollAmount : -scrollAmount,
+      behavior: 'smooth'
+    });
   };
 
   return (
-    <section id="portfolio" className="py-24 bg-[#FDFBF7] relative overflow-hidden">
-      {/* Decorative floating letters/shapes background - Subtle */}
+    <section id="portfolio" className="py-24 bg-[#FDFBF7] relative overflow-hidden group/section">
+      {/* Decorative floating letters/shapes background */}
       <div className="absolute top-20 left-10 opacity-5 font-black text-9xl text-[#2A9D8F] rotate-12 select-none pointer-events-none animate-pulse">A</div>
       <div className="absolute bottom-40 right-10 opacity-5 font-black text-9xl text-[#EE969A] -rotate-12 select-none pointer-events-none animate-pulse">B</div>
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-[0.03] w-[150%] h-[150%] bg-[radial-gradient(circle,_#F4D35E_1px,_transparent_1px)] bg-[length:40px_40px] pointer-events-none"></div>
 
-      <div className="w-full relative z-10 flex flex-col h-full">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full text-center mb-12">
+      <div className="w-full relative z-10 flex flex-col h-full mx-auto">
+        <div className="w-full text-center mb-12 px-4">
           <span className="text-[#EE969A] font-bold tracking-widest uppercase text-sm mb-2 block animate-fade-in-up">Tienda</span>
           <h2 className="text-4xl md:text-6xl font-black text-[#264653] mb-8 font-['Fredoka'] animate-fade-in-up">
             Creaciones Mágicas
           </h2>
           
           {/* Filter Tabs */}
-          <div className="flex flex-wrap justify-center gap-4 mb-4">
+          <div className="flex flex-wrap justify-center gap-4 mb-8">
             {categories.map((cat) => (
               <button
                 key={cat.id}
-                onClick={() => {
-                  setFilter(cat.id);
-                  if (scrollContainerRef.current) scrollContainerRef.current.scrollLeft = 0;
-                }}
+                onClick={() => setFilter(cat.id)}
                 className={`px-6 py-2 rounded-full font-bold text-sm transition-all duration-300 transform hover:-translate-y-0.5 ${
                   filter === cat.id
                     ? 'bg-[#264653] text-white shadow-lg scale-105'
@@ -77,61 +97,66 @@ const Portfolio: React.FC = () => {
           </div>
         </div>
 
-        {/* Horizontal Scroll Slider Container */}
-        <div className="relative group/slider w-full">
-          
-          {/* Bubble Navigation - Left */}
-          {showLeftArrow && (
-            <button 
-              onClick={() => scroll('left')}
-              className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 z-30 w-16 h-16 bg-white/90 backdrop-blur-md rounded-full shadow-[0_10px_30px_-10px_rgba(0,0,0,0.2)] flex items-center justify-center text-[#264653] hover:scale-110 hover:bg-[#F4D35E] hover:text-white transition-all border-4 border-white/50 group-hover/slider:opacity-100 opacity-0 duration-300"
-            >
-              <ChevronLeft className="w-8 h-8" strokeWidth={3} />
-            </button>
-          )}
-          
-          {/* Bubble Navigation - Right */}
-          {showRightArrow && (
-            <button 
-              onClick={() => scroll('right')}
-              className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 z-30 w-16 h-16 bg-white/90 backdrop-blur-md rounded-full shadow-[0_10px_30px_-10px_rgba(0,0,0,0.2)] flex items-center justify-center text-[#264653] hover:scale-110 hover:bg-[#EE969A] hover:text-white transition-all border-4 border-white/50 group-hover/slider:opacity-100 opacity-0 duration-300"
-            >
-              <ChevronRight className="w-8 h-8" strokeWidth={3} />
-            </button>
-          )}
-
-          {/* Fade Gradients for "Infinity" look */}
-          <div className="absolute top-0 left-0 w-8 md:w-32 h-full bg-gradient-to-r from-[#FDFBF7] to-transparent z-20 pointer-events-none"></div>
-          <div className="absolute top-0 right-0 w-8 md:w-32 h-full bg-gradient-to-l from-[#FDFBF7] to-transparent z-20 pointer-events-none"></div>
-
-          {/* Scroll Track */}
-          <div 
-            ref={scrollContainerRef}
-            onScroll={checkScroll}
-            className="flex overflow-x-auto gap-6 md:gap-10 px-8 md:px-[calc(50vw-200px)] py-12 hide-scrollbar snap-x snap-mandatory scroll-smooth items-center min-h-[600px]"
-            style={{ perspective: '1000px' }}
-          >
-            {filteredItems.map((item, index) => (
-              <div key={item.id} className="snap-center flex-shrink-0">
-                 <TiltCard item={item} index={index} />
-              </div>
-            ))}
-            
-            {/* Empty state filler */}
-            {filteredItems.length === 0 && (
-               <div className="w-full text-center py-20 text-slate-400 mx-auto">
-                  <p>No hay productos en esta categoría aún.</p>
-               </div>
+        {/* Carousel Container */}
+        <div 
+            className="relative w-full"
+            onMouseEnter={() => setIsPaused(true)}
+            onMouseLeave={() => setIsPaused(false)}
+        >
+            {/* Navigation Arrows */}
+            {filteredItems.length > 0 && (
+                <>
+                    <button 
+                        onClick={() => scrollManual('left')}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-white/80 backdrop-blur-md shadow-lg border border-white flex items-center justify-center text-[#264653] hover:bg-[#264653] hover:text-white transition-all duration-300 transform hover:scale-110 active:scale-95 group-hover/section:opacity-100 opacity-0 md:opacity-100"
+                        aria-label="Anterior"
+                    >
+                        <ChevronLeft className="w-6 h-6" />
+                    </button>
+                    <button 
+                        onClick={() => scrollManual('right')}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-white/80 backdrop-blur-md shadow-lg border border-white flex items-center justify-center text-[#264653] hover:bg-[#264653] hover:text-white transition-all duration-300 transform hover:scale-110 active:scale-95 group-hover/section:opacity-100 opacity-0 md:opacity-100"
+                        aria-label="Siguiente"
+                    >
+                        <ChevronRight className="w-6 h-6" />
+                    </button>
+                </>
             )}
-          </div>
+
+            {/* Fade Gradients for edges */}
+            <div className="absolute top-0 left-0 h-full w-16 md:w-32 bg-gradient-to-r from-[#FDFBF7] to-transparent z-20 pointer-events-none"></div>
+            <div className="absolute top-0 right-0 h-full w-16 md:w-32 bg-gradient-to-l from-[#FDFBF7] to-transparent z-20 pointer-events-none"></div>
+
+            <div 
+                ref={scrollRef}
+                className="overflow-x-hidden flex gap-8 py-10 pl-8 hide-scrollbar cursor-grab active:cursor-grabbing"
+                style={{ scrollBehavior: 'auto' }} // We handle smooth scroll manually or per frame
+            >
+                {filteredItems.length === 0 ? (
+                    <div className="w-full text-center py-20 text-slate-400 flex-shrink-0">
+                        <p className="w-screen">No hay productos en esta categoría aún.</p>
+                    </div>
+                ) : (
+                    displayItems.map((item, index) => (
+                        <div key={`${item.id}-loop-${index}`} className="flex-shrink-0 w-[280px] md:w-[320px]">
+                            <TiltCard item={item} />
+                        </div>
+                    ))
+                )}
+            </div>
+            
+            {/* User hint */}
+            <div className="text-center text-slate-400 text-xs font-bold uppercase tracking-widest mt-4">
+               {isPaused ? "¡Explora a tu ritmo!" : "Deslizando..."}
+            </div>
         </div>
       </div>
     </section>
   );
 };
 
-// 3D Tilt Card Component - Enhanced for "Wow" Factor
-const TiltCard: React.FC<{ item: PortfolioItem, index: number }> = ({ item }) => {
+// 3D Tilt Card Component
+const TiltCard: React.FC<{ item: PortfolioItem }> = ({ item }) => {
   const [rotation, setRotation] = useState({ x: 0, y: 0 });
   const [isHovering, setIsHovering] = useState(false);
   const { addToCart } = useCart();
@@ -147,9 +172,9 @@ const TiltCard: React.FC<{ item: PortfolioItem, index: number }> = ({ item }) =>
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
     
-    // Increased sensitivity for more 3D movement
-    const rotateX = ((y - centerY) / centerY) * -12; 
-    const rotateY = ((x - centerX) / centerX) * 12;
+    // Sensitivity
+    const rotateX = ((y - centerY) / centerY) * -10; 
+    const rotateY = ((x - centerX) / centerX) * 10;
 
     setRotation({ x: rotateX, y: rotateY });
   };
@@ -168,13 +193,13 @@ const TiltCard: React.FC<{ item: PortfolioItem, index: number }> = ({ item }) =>
 
   return (
     <div
-      className="perspective-1000 group relative w-[320px] md:w-[380px] h-[520px] cursor-pointer"
+      className="perspective-1000 group/card relative w-full h-[450px] select-none"
       style={{ perspective: '1200px' }}
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Floating Price Tag - Appears on Hover outside card bounds for 3D feel */}
+      {/* Floating Price Tag */}
       <div 
         className="absolute -top-4 -right-4 z-40 transition-all duration-300 transform"
         style={{
@@ -190,29 +215,30 @@ const TiltCard: React.FC<{ item: PortfolioItem, index: number }> = ({ item }) =>
       <div
         className="relative w-full h-full bg-white rounded-[2.5rem] transition-all duration-300 ease-out flex flex-col border border-white"
         style={{
-          transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovering ? 1.05 : 1}, ${isHovering ? 1.05 : 1}, 1)`,
+          transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovering ? 1.02 : 1}, ${isHovering ? 1.02 : 1}, 1)`,
           boxShadow: isHovering 
             ? '0 30px 60px -12px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.3), inset 0 0 0 2px rgba(255,255,255,0.5)' 
-            : '0 10px 20px -5px rgba(0, 0, 0, 0.05), 0 5px 10px -5px rgba(0, 0, 0, 0.01)',
+            : '0 10px 30px -10px rgba(0, 0, 0, 0.05)',
           transition: isHovering ? 'none' : 'all 0.6s cubic-bezier(0.23, 1, 0.32, 1)',
         }}
       >
         
-        {/* Full Image Background with Gradient - Removed overlay for full brightness */}
-        <div className="relative h-[65%] w-full overflow-hidden rounded-t-[2.5rem]">
+        {/* Full Image Background */}
+        <div className="relative h-[60%] w-full overflow-hidden rounded-t-[2.5rem]">
            <img 
             src={item.image} 
             alt={item.title}
-            className="w-full h-full object-cover transition-transform duration-700 ease-in-out group-hover:scale-110"
+            className="w-full h-full object-cover transition-transform duration-700 ease-in-out group-hover/card:scale-110"
+            draggable={false} 
            />
         </div>
 
         {/* Content Area */}
-        <div className="h-[35%] p-8 relative flex flex-col justify-between bg-white rounded-b-[2.5rem] z-20">
+        <div className="h-[40%] p-6 relative flex flex-col justify-between bg-white rounded-b-[2.5rem] z-20">
             {/* Floating Category Badge */}
-            <div className="absolute -top-5 left-8 transform transition-transform duration-300 group-hover:-translate-y-1">
+            <div className="absolute -top-5 left-6 transform transition-transform duration-300 group-hover/card:-translate-y-1">
                 <span 
-                className="text-xs font-black tracking-widest uppercase px-4 py-2 rounded-xl shadow-lg border-2 border-white"
+                className="text-[10px] font-black tracking-widest uppercase px-3 py-1.5 rounded-xl shadow-lg border-2 border-white"
                 style={{ backgroundColor: item.color, color: '#fff' }}
                 >
                 {item.categoryLabel}
@@ -221,11 +247,10 @@ const TiltCard: React.FC<{ item: PortfolioItem, index: number }> = ({ item }) =>
 
           <div>
              <div className="flex justify-between items-start mt-2">
-                <h3 className="text-2xl font-bold text-[#264653] leading-tight font-['Fredoka']">
+                <h3 className="text-xl font-bold text-[#264653] leading-tight font-['Fredoka']">
                     {item.title}
                 </h3>
              </div>
-             {/* Show price here normally if not hovering */}
              <p className={`text-[#2A9D8F] font-bold mt-1 transition-opacity duration-300 ${isHovering ? 'opacity-0' : 'opacity-100'}`}>
                 {item.price}
              </p>
@@ -234,7 +259,7 @@ const TiltCard: React.FC<{ item: PortfolioItem, index: number }> = ({ item }) =>
           <div className="mt-2">
             <button 
                 onClick={handleAddToCart}
-                className={`w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-300 relative overflow-hidden group/btn ${
+                className={`w-full py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-300 relative overflow-hidden group/btn ${
                 added 
                     ? 'bg-green-500 text-white shadow-green-200 shadow-lg' 
                     : 'bg-[#FDFBF7] text-[#264653] hover:bg-[#264653] hover:text-white border-2 border-slate-100 hover:border-[#264653]'
@@ -256,7 +281,7 @@ const TiltCard: React.FC<{ item: PortfolioItem, index: number }> = ({ item }) =>
       
       {/* Real-time Reflection Effect below the card */}
       <div 
-          className="absolute -bottom-8 left-8 right-8 h-4 rounded-[50%] bg-black/20 blur-xl transition-all duration-300 pointer-events-none"
+          className="absolute -bottom-6 left-8 right-8 h-4 rounded-[50%] bg-black/20 blur-xl transition-all duration-300 pointer-events-none"
           style={{ 
             opacity: isHovering ? 0.3 : 0.1,
             transform: `scale(${isHovering ? 1 : 0.8}) translateY(${rotation.x}px)`
